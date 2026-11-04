@@ -1,0 +1,6 @@
+flask>=3.0
+pandas>=2.0
+scikit-learn>=1.4
+anthropic>=0.40   # optional: only used if ANTHROPIC_API_KEY is set
+pytest>=8.0
+ruff>=0.5
