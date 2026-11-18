@@ -6,8 +6,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: "3.12", cache: pip }
-      - run: pip install -r requirements.txt
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - run: pip install -r requirements-dev.txt
       - run: ruff check .
+      - run: mypy src
       - run: pytest -q
-      - run: docker build -t backup-triage-agent .
+      - name: Docker image builds and answers a health check
+        run: |
+          docker build -t backup-triage-agent .
+          docker run -d -p 5000:5000 --name triage backup-triage-agent
+          for i in $(seq 1 20); do curl -fs localhost:5000/healthz && exit 0; sleep 1; done
+          docker logs triage; exit 1

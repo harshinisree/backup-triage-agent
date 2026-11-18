@@ -8,11 +8,12 @@ DEFAULT_DIR = Path(__file__).resolve().parents[2] / "runbooks"
 
 
 class RunbookRetriever:
-    def __init__(self, directory: Path = DEFAULT_DIR):
-        self.names, self.texts = [], []
+    def __init__(self, directory: Path = DEFAULT_DIR) -> None:
+        self.names: list[str] = []
+        self.texts: list[str] = []
         for p in sorted(Path(directory).glob("*.md")):
             self.names.append(p.stem)
-            self.texts.append(p.read_text())
+            self.texts.append(p.read_text(encoding="utf-8"))
         if not self.texts:
             raise ValueError(f"No runbooks found in {directory}")
         self.vec = TfidfVectorizer(stop_words="english")

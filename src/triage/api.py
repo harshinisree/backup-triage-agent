@@ -1,20 +1,22 @@
-from flask import Flask, jsonify, request
+from flask import Flask, Response, jsonify, request
 
 from .agent import TriageAgent
-from .models import Incident
+from .models import Incident, TriageResult
+
+Reply = Response | tuple[Response, int] | dict[str, str]
 
 
 def create_app(agent: TriageAgent | None = None) -> Flask:
     app = Flask(__name__)
     ag = agent or TriageAgent()
-    store: dict = {}
+    store: dict[str, TriageResult] = {}
 
     @app.get("/healthz")
-    def health():
+    def health() -> Reply:
         return {"status": "ok"}
 
     @app.post("/triage")
-    def triage():
+    def triage() -> Reply:
         body = request.get_json(silent=True) or {}
         if not body.get("id") or not body.get("message"):
             return jsonify(error="id and message are required"), 400
@@ -23,13 +25,13 @@ def create_app(agent: TriageAgent | None = None) -> Flask:
         return jsonify(result.to_dict()), 201
 
     @app.get("/incidents/<iid>")
-    def get_incident(iid):
+    def get_incident(iid: str) -> Reply:
         if iid not in store:
             return jsonify(error="not found"), 404
         return jsonify(store[iid].to_dict())
 
     @app.post("/incidents/<iid>/<decision>")
-    def decide(iid, decision):
+    def decide(iid: str, decision: str) -> Reply:
         if iid not in store:
             return jsonify(error="not found"), 404
         approver = (request.get_json(silent=True) or {}).get("approver")

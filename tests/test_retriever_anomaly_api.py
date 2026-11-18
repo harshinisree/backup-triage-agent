@@ -39,3 +39,10 @@ def test_api_flow(client):
 def test_api_validation(client):
     assert client.post("/triage", json={"id": "x"}).status_code == 400
     assert client.get("/incidents/nope").status_code == 404
+
+
+def test_api_reject_after_approval_returns_409(client):
+    client.post("/triage", json={"id": "I-2", "message": "snapshot timeout exceeded window"})
+    client.post("/incidents/I-2/approve", json={"approver": "harshini"})
+    r = client.post("/incidents/I-2/reject", json={"approver": "x"})
+    assert r.status_code == 409 and client.get("/incidents/I-2").json["status"] == "completed"
