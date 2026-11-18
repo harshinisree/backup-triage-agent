@@ -4,6 +4,7 @@ ingest -> classify -> retrieve runbook -> summarize (LLM, validated) ->
 propose action -> approval gate -> execute (dry-run) -> audit
 """
 from pathlib import Path
+from typing import Any, Protocol
 
 from . import audit
 from .classifier import classify
@@ -23,13 +24,24 @@ DEFAULT_ACTION = {
 AUTO_APPROVED = {"open_ticket", "none"}
 
 
+class SupportsComplete(Protocol):
+    """Anything with this method can act as the LLM (the real client or a test fake)."""
+
+    def complete(self, message: str, category: str, runbook: str) -> dict[str, str]: ...
+
+
 class TriageAgent:
-    def __init__(self, retriever=None, llm=None, audit_path: Path | None = None):
+    def __init__(
+        self,
+        retriever: RunbookRetriever | None = None,
+        llm: SupportsComplete | None = None,
+        audit_path: Path | None = None,
+    ) -> None:
         self.retriever = retriever or RunbookRetriever()
-        self.llm = llm or LLMClient()
+        self.llm: SupportsComplete = llm or LLMClient()
         self.audit_path = audit_path
 
-    def _log(self, result: TriageResult, step: str, detail: dict) -> None:
+    def _log(self, result: TriageResult, step: str, detail: dict[str, Any]) -> None:
         result.trace.append(step)
         audit.log(result.incident_id, step, detail, self.audit_path)
 
@@ -76,6 +88,8 @@ class TriageAgent:
         return result
 
     def reject(self, result: TriageResult, approver: str) -> TriageResult:
+        if result.status != "pending_approval":
+            raise ValueError(f"cannot reject incident in status {result.status}")
         self._log(result, "rejected", {"by": approver})
         result.status = "rejected"
         return result

@@ -1,5 +1,7 @@
 # Backup Incident Triage Agent
 
+![CI](https://github.com/harshinisree/backup-triage-agent/actions/workflows/ci.yml/badge.svg)
+
 Agentic workflow that triages backup-job failures: classify, retrieve the matching runbook (RAG),
 draft a summary with an LLM, propose a remediation, and **require human approval** before any
 mutating action. Every step is written to an audit log. Also includes anomaly detection on job history.
@@ -20,7 +22,7 @@ incident -> classify (rules) -> retrieve runbook (TF-IDF) -> LLM summary + actio
 | Anomaly detection (pandas, scikit-learn) | `src/triage/anomaly.py` |
 | REST API (Flask) | `src/triage/api.py` |
 | Audit logging | `src/triage/audit.py` |
-| Tests, lint, CI, Docker | `tests/`, `pyproject.toml`, `.github/workflows/ci.yml`, `Dockerfile` |
+| Tests, lint, type checks, CI, Docker | `tests/`, `pyproject.toml`, `.github/workflows/ci.yml`, `Dockerfile` |
 
 ## Safeguards
 - LLM may only choose from an allowlist of actions; anything else is rejected.
@@ -30,12 +32,12 @@ incident -> classify (rules) -> retrieve runbook (TF-IDF) -> LLM summary + actio
 
 ## Run
 ```bash
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 export PYTHONPATH=src
-pytest -q && ruff check .
+ruff check . && mypy src && pytest -q
 python -m triage.cli triage "Snapshot exceeded window, job timeout" --host srv-03
 python -m triage.cli anomalies data/sample_jobs.csv
-python -m triage.api            # http://localhost:5000
+python -m triage.api            # development server at http://localhost:5000
 ```
 Optional LLM: `export ANTHROPIC_API_KEY=...` (works without it via fallback).
 
@@ -45,7 +47,34 @@ curl -X POST localhost:5000/triage -H 'Content-Type: application/json' \
 curl -X POST localhost:5000/incidents/INC-1/approve -H 'Content-Type: application/json' \
   -d '{"approver":"your.name"}'
 ```
-Docker: `docker build -t triage . && docker run -p 5000:5000 triage`
+Docker (served by gunicorn, as a non-root user): `docker build -t triage . && docker run -p 5000:5000 triage`
+
+## Example output
+Real output with no API key, so the summary comes from the safe fallback. A retry changes the backup
+system, so it waits for approval:
+
+```json
+{"incident_id": "INC-1", "category": "snapshot_timeout", "confidence": 1.0,
+ "runbook": "snapshot_timeout", "proposed_action": "retry_job",
+ "requires_approval": true, "status": "pending_approval", "used_llm": false,
+ "summary": "[snapshot_timeout] on srv-03: Snapshot exceeded window, job timeout. See runbook 'snapshot_timeout'.",
+ "trace": ["classified", "retrieved", "llm_fallback", "proposed"]}
+```
+
+After `POST /incidents/INC-1/approve` the status becomes `completed` and the trace ends with
+`"approved", "executed_dry_run"`. Approving or rejecting it again returns `409`.
+
+Anomaly detection on the sample history flags the injected failure spike:
+
+```
+      date  total  failed  fail_rate  anomaly
+2026-09-30      8       5      0.625     True
+```
+
+## Quality checks
+CI runs on every push: ruff (lint and type-hint rules), mypy, 18 pytest tests, and a Docker build
+that must answer `/healthz`. Dependencies are pinned in `requirements.txt` (runtime) and
+`requirements-dev.txt` (tests and checks).
 
 ## Limitations / next steps
 Rule-based classifier (LLM classifier is a next step); TF-IDF retrieval (embeddings next);

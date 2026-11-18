@@ -18,7 +18,7 @@ def classify(message: str) -> tuple[str, float]:
     scores = {
         cat: sum(1 for p in pats if re.search(p, text)) for cat, pats in RULES.items()
     }
-    best = max(scores, key=scores.get)
+    best = max(scores, key=lambda cat: scores[cat])
     if scores[best] == 0:
         return "unknown", 0.0
     total = sum(scores.values())

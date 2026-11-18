@@ -63,3 +63,33 @@ def test_llm_output_validation_rejects_unsafe_action():
         validate('{"summary": "x", "action": "delete_all_backups"}')
     with pytest.raises(ValueError):
         validate('{"summary": "", "action": "retry_job"}')
+
+
+def test_cannot_reject_after_completion(audit_path):
+    agent = TriageAgent(llm=GoodLLM(), audit_path=audit_path)
+    r = agent.triage(Incident("INC-4", "snapshot timeout"))
+    agent.approve(r, "a")
+    with pytest.raises(ValueError):
+        agent.reject(r, "b")
+    assert r.status == "completed"
+
+
+def test_llm_reply_without_text_falls_back(monkeypatch, audit_path):
+    """A reply holding only non-text blocks must not crash triage."""
+    import sys
+    from types import SimpleNamespace
+
+    from triage.llm import LLMClient
+
+    reply = SimpleNamespace(content=[SimpleNamespace(type="thinking")])
+    fake = SimpleNamespace(
+        Anthropic=lambda: SimpleNamespace(messages=SimpleNamespace(create=lambda **k: reply))
+    )
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
+    monkeypatch.setitem(sys.modules, "anthropic", fake)
+
+    with pytest.raises(ValueError):
+        LLMClient().complete("snapshot timeout", "snapshot_timeout", "runbook")
+    agent = TriageAgent(llm=LLMClient(), audit_path=audit_path)
+    r = agent.triage(Incident("I", "snapshot timeout"))
+    assert "llm_fallback" in r.trace

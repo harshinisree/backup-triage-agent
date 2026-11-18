@@ -1,4 +1,5 @@
 from dataclasses import asdict, dataclass, field
+from typing import Any
 
 
 @dataclass
@@ -19,7 +20,7 @@ class TriageResult:
     requires_approval: bool
     status: str
     used_llm: bool = False
-    trace: list = field(default_factory=list)
+    trace: list[str] = field(default_factory=list)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)

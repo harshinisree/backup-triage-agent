@@ -17,7 +17,7 @@ class LLMUnavailable(Exception):
     pass
 
 
-def validate(raw: str) -> dict:
+def validate(raw: str) -> dict[str, str]:
     data = json.loads(raw)
     if not isinstance(data.get("summary"), str) or not data["summary"].strip():
         raise ValueError("missing summary")
@@ -27,7 +27,7 @@ def validate(raw: str) -> dict:
 
 
 class LLMClient:
-    def complete(self, message: str, category: str, runbook: str) -> dict:
+    def complete(self, message: str, category: str, runbook: str) -> dict[str, str]:
         if not os.getenv("ANTHROPIC_API_KEY"):
             raise LLMUnavailable("ANTHROPIC_API_KEY not set")
         try:
@@ -46,4 +46,8 @@ class LLMClient:
                 ),
             }],
         )
-        return validate(resp.content[0].text)
+        # The reply can hold several kinds of block; only text blocks carry the JSON.
+        texts = [block.text for block in resp.content if block.type == "text"]
+        if not texts:
+            raise ValueError("LLM reply had no text")
+        return validate(texts[0])
